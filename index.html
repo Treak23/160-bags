@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#111a23">
+<title>160 Bags</title>
+<meta name="description" content="A plane at Fukuoka can't leave until 160 missing bags are loaded. You are the only ground handler.">
+<style>
+  :root {
+    --bg: #111a23;
+    --panel: #1b2733;
+    --line: #2f4052;
+    --ink: #eef3f7;
+    --dim: #93a4b5;
+    --accent: #ffc928;
+    --mine: #ff8a1f;
+    --bad: #ff4d4d;
+    --good: #4fe08a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: calc(8px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(#0c131a, #0c131add 70%, #0c131a00);
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+  #hud.hidden { visibility: hidden; }
+  .stat { flex: 1 1 0; min-width: 0; }
+  .stat .label { font-size: 11px; letter-spacing: .12em; color: var(--dim); text-transform: uppercase; white-space: nowrap; }
+  .stat .value { font-size: clamp(20px, 6vw, 30px); font-weight: 800; line-height: 1.1; white-space: nowrap; }
+  .stat.right { text-align: right; }
+  #bar { height: 5px; margin-top: 4px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  #barFill { height: 100%; width: 0; background: var(--good); transition: width .2s; }
+  #clock.hit { animation: bump .9s; }
+  @keyframes bump { 0%, 70% { color: var(--bad); } 15% { transform: scale(1.18); } }
+  #clock { display: inline-block; transform-origin: right center; }
+  .tagchip {
+    flex: 0 0 auto; text-align: center;
+    background: #fbf7ec; color: #1a1a1a; border-radius: 6px;
+    border-top: 9px solid var(--mine);
+    padding: 1px 10px 3px;
+    font: 800 clamp(18px, 5.5vw, 26px)/1.1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    box-shadow: 0 2px 0 #0006;
+  }
+  .tagchip small { display: block; font: 700 9px/1.2 system-ui, sans-serif; letter-spacing: .1em; color: #666; }
+
+  .screen {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 20px; background: #0b1218e6; text-align: center; overflow: auto;
+  }
+  .screen.hidden { display: none; }
+  .card { max-width: 440px; width: 100%; margin: auto; }
+  h1 {
+    margin: 0; font-size: clamp(48px, 15vw, 84px); line-height: .95; font-weight: 900; letter-spacing: -.02em;
+  }
+  h1 span { color: var(--accent); }
+  .stripe {
+    height: 10px; margin: 14px auto 18px; width: 70%; border-radius: 2px;
+    background: repeating-linear-gradient(-45deg, var(--accent) 0 12px, #1a1a1a 12px 24px);
+  }
+  p { margin: 0 0 12px; color: #c9d5df; font-size: 16px; line-height: 1.45; }
+  .rules { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 16px 0; }
+  .rules p { margin: 0 0 8px; font-size: 15px; }
+  .rules p:last-child { margin: 0; }
+  .rules b { color: var(--ink); }
+  .code { font: 800 1em ui-monospace, "SF Mono", Menlo, Consolas, monospace; background: #fbf7ec; color: #1a1a1a; padding: 0 5px; border-radius: 4px; border-top: 3px solid var(--mine); }
+  button {
+    font: 800 20px system-ui, sans-serif; letter-spacing: .04em;
+    color: #1a1a1a; background: var(--accent); border: 0; border-radius: 12px;
+    padding: 16px 28px; min-width: 220px; cursor: pointer;
+    box-shadow: 0 5px 0 #a57d00; touch-action: manipulation;
+  }
+  button:active { transform: translateY(4px); box-shadow: 0 1px 0 #a57d00; }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  .eyebrow { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); margin-bottom: 8px; }
+  #endHeadline { font-size: clamp(28px, 8vw, 40px); font-weight: 900; line-height: 1.1; color: var(--ink); margin: 0 0 6px; }
+  #endHeadline em { font-style: normal; color: var(--accent); }
+  #endDetail { color: var(--dim); font-size: 14px; }
+  #tier { font-size: 22px; font-weight: 800; color: var(--accent); margin: 0 0 4px; }
+  #tierLine { font-size: 15px; margin: 0; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="stat">
+    <div class="label">Bags loaded</div>
+    <div class="value"><span id="count">0</span>/160</div>
+    <div id="bar"><div id="barFill"></div></div>
+  </div>
+  <div class="tagchip"><small>YOUR FLIGHT</small>FUK</div>
+  <div class="stat right">
+    <div class="label">Delay</div>
+    <div class="value"><span id="clock">0:00</span></div>
+  </div>
+</div>
+
+<div id="title" class="screen">
+  <div class="card">
+    <div class="eyebrow">Fukuoka Airport · Ramp 7</div>
+    <h1><span>160</span> BAGS</h1>
+    <div class="stripe"></div>
+    <p>The plane is boarded. The bags are not. 160 of them are somewhere on this belt, and you are the entire ground crew.</p>
+    <div class="rules">
+      <p><b>Tap</b> every bag tagged <span class="code">FUK</span> to load it. Each one counts as 5.</p>
+      <p><b>Let the rest pass.</b> A wrong bag adds <b>20 seconds</b> to the delay.</p>
+      <p>Missed one of yours? It comes around again. The belt speeds up, and the tags get sneaky.</p>
+    </div>
+    <button id="startBtn">START SHIFT</button>
+  </div>
+</div>
+
+<div id="end" class="screen hidden">
+  <div class="card">
+    <div class="eyebrow">All 160 bags loaded</div>
+    <p id="endHeadline"></p>
+    <p id="endDetail"></p>
+    <div class="rules" style="text-align:center">
+      <p id="tier"></p>
+      <p id="tierLine"></p>
+    </div>
+    <button id="restartBtn">WORK ANOTHER SHIFT</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- config ----------
+  const TARGET = 'FUK';
+  const BAGS_PER_TAP = 5;
+  const GOAL_TAPS = 32;                 // 32 x 5 = 160
+  const PENALTY = 20;                   // seconds
+  const MINE_COLOR = '#ff8a1f';
+  const OTHER_TAGS = [
+    ['HND', '#3d8bff'], ['KIX', '#35c46a'], ['CTS', '#a064ff'],
+    ['OKA', '#ff5fa8'], ['NGO', '#22c7c7'], ['NRT', '#e8e8e8'],
+  ];
+  const LOOKALIKE_CODES = ['FUI', 'FUX', 'PUK', 'FVK', 'EUK', 'FUR', 'RUK', 'FKU'];
+  const LOOKALIKE_COLORS = ['#ff8a1f', '#ff9a2e', '#f47a1c', '#ffa53d', '#f26b2a'];
+  const BODY_COLORS = ['#34495e', '#5b6770', '#7a2e3a', '#2f5d50', '#22262b', '#8a6f4d', '#3f4a8a', '#6b3f7a'];
+  const TIERS = [
+    [70,  'Ramp Legend',            'The captain wants to name a child after you.'],
+    [90,  'Employee of the Month',  'Your photo goes up by the vending machine.'],
+    [120, 'Solid Shift',            'Nobody posted about it. That is the highest praise in aviation.'],
+    [170, 'Mildly Apologetic',      'The gate agent has run out of ways to say "shortly".'],
+    [240, 'Tarmac Tortoise',        'Passengers have formed a small society in row 23.'],
+    [Infinity, 'Lost & Found Dept.', 'The in-flight meal expired. The bags are still warm, though.'],
+  ];
+
+  // ---------- dom ----------
+  const $ = id => document.getElementById(id);
+  const canvas = $('c'), ctx = canvas.getContext('2d');
+  const hud = $('hud'), countEl = $('count'), clockEl = $('clock'), barFill = $('barFill');
+  const titleEl = $('title'), endEl = $('end');
+
+  // ---------- state ----------
+  let W = 0, H = 0, dpr = 1;
+  let lanes = [], bagW = 90, bagH = 70;
+  let mode = 'title';                   // title | play | departing | end
+  let bags = [], floats = [], requeue = [];
+  let loaded = 0, wrong = 0, elapsed = 0, penalty = 0;
+  let spawnTimer = 0, sinceMine = 0, beltPhase = 0;
+  let shake = 0, flash = 0, departT = 0;
+  let lastCount = -1, lastClock = '';
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[(Math.random() * arr.length) | 0];
+  const lerp = (a, b, t) => a + (b - a) * Math.max(0, Math.min(1, t));
+  const progress = () => loaded / GOAL_TAPS;
+  const crossTime = () => lerp(5.4, 2.6, progress());      // seconds for a bag to cross the screen
+  const spawnGap = () => lerp(0.95, 0.52, progress());
+
+  // ---------- audio ----------
+  let ac = null;
+  function initAudio() {
+    try {
+      if (!ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) ac = new AC(); }
+      if (ac && ac.state === 'suspended') ac.resume();
+    } catch (e) { ac = null; }
+  }
+  function tone(freq, dur, type, vol, delay, slideTo) {
+    if (!ac) return;
+    const t = ac.currentTime + (delay || 0);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.15, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  const sfx = {
+    load()  { const up = 1 + progress() * 0.5; tone(520 * up, 0.09, 'triangle', 0.2); tone(780 * up, 0.12, 'triangle', 0.18, 0.06); },
+    wrong() { tone(150, 0.32, 'sawtooth', 0.2, 0, 70); tone(110, 0.32, 'square', 0.1, 0, 60); },
+    miss()  { tone(330, 0.16, 'sine', 0.08, 0, 200); },
+    start() { tone(392, 0.1, 'triangle', 0.16); tone(523, 0.1, 'triangle', 0.16, 0.1); tone(659, 0.16, 'triangle', 0.16, 0.2); },
+    depart(){ [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', 0.18, i * 0.12)); tone(90, 1.6, 'sawtooth', 0.07, 0.3, 420); },
+  };
+
+  // ---------- layout ----------
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    const top = Math.max(hud.offsetHeight || 0, 72) + 6;
+    const avail = H - top - 12;
+    const n = avail > 470 ? 3 : avail > 210 ? 2 : 1;
+    const laneH = avail / n;
+    bagH = Math.max(46, Math.min(104, laneH * 0.6, W / 4.6));
+    bagW = bagH * 1.28;
+    const old = lanes;
+    lanes = [];
+    for (let i = 0; i < n; i++) {
+      lanes.push({ y: top + laneH * (i + 0.5), h: Math.min(laneH - 14, bagH * 1.55), dir: i % 2 ? -1 : 1, cool: old[i] ? old[i].cool : 0 });
+    }
+    for (const b of bags) if (b.lane >= n) b.lane = n - 1;
+  }
+  const bagX = b => {       // centre x from belt fraction
+    const span = W + bagW;
+    return lanes[b.lane].dir > 0 ? -bagW / 2 + b.t * span : W + bagW / 2 - b.t * span;
+  };
+
+  // ---------- game flow ----------
+  function start() {
+    initAudio();
+    bags = []; floats = []; requeue = [];
+    loaded = 0; wrong = 0; elapsed = 0; penalty = 0;
+    spawnTimer = 0.4; sinceMine = 0; shake = 0; flash = 0;
+    titleEl.classList.add('hidden'); endEl.classList.add('hidden'); hud.classList.remove('hidden');
+    resize();
+    for (const l of lanes) l.cool = 0;
+    mode = 'play';
+    sfx.start();
+  }
+
+  function finish() {
+    mode = 'departing'; departT = 0;
+    sfx.depart();
+  }
+
+  function showEnd() {
+    mode = 'end';
+    const total = elapsed + penalty;
+    const mins = Math.max(1, Math.ceil(total / 60));
+    $('endHeadline').innerHTML = 'Departed <em>' + mins + ' minute' + (mins === 1 ? '' : 's') + '</em> late';
+    $('endDetail').textContent = 'Delay clock ' + fmt(total) +
+      (wrong ? ' · ' + wrong + ' wrong bag' + (wrong === 1 ? '' : 's') + ' (+' + wrong * PENALTY + 's)' : ' · no wrong bags');
+    const tier = TIERS.find(t => total < t[0]);
+    $('tier').textContent = tier[1];
+    $('tierLine').textContent = tier[2];
+    endEl.classList.remove('hidden');
+    $('restartBtn').focus({ preventScroll: true });
+  }
+
+  function fmt(s) {
+    s = Math.floor(s);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  // ---------- spawning ----------
+  function makeBag(lane) {
+    const p = progress();
+    let code, color, mine = false, body = pick(BODY_COLORS);
+    const back = requeue.length && requeue[0].at <= elapsed ? requeue.shift() : null;
+    if (back || sinceMine >= 3 || Math.random() < 0.42) {
+      mine = true; code = TARGET; color = MINE_COLOR;
+      if (back) body = back.body;
+      sinceMine = 0;
+    } else {
+      sinceMine++;
+      if (p >= 0.25 && Math.random() < lerp(0.35, 0.8, (p - 0.25) / 0.6)) {
+        code = pick(LOOKALIKE_CODES); color = pick(LOOKALIKE_COLORS);
+      } else {
+        [code, color] = pick(OTHER_TAGS);
+      }
+    }
+    return { lane, t: 0, code, color, mine, body, state: 'belt', anim: 0, x: 0, y: 0, tilt: rand(-0.05, 0.05) };
+  }
+
+  function spawn(dt) {
+    for (const l of lanes) l.cool -= dt;
+    spawnTimer -= dt;
+    if (spawnTimer > 0) return;
+    const ready = [];
+    lanes.forEach((l, i) => { if (l.cool <= 0) ready.push(i); });
+    if (!ready.length) return;
+    const i = pick(ready);
+    bags.push(makeBag(i));
+    lanes[i].cool = (bagW * 1.2) / ((W + bagW) / crossTime());
+    spawnTimer = spawnGap() * rand(0.85, 1.15);
+  }
+
+  // ---------- input ----------
+  function tap(px, py) {
+    if (mode !== 'play') return;
+    const pad = 10;
+    for (let i = bags.length - 1; i >= 0; i--) {
+      const b = bags[i];
+      if (b.state !== 'belt') continue;
+      const x = bagX(b), y = lanes[b.lane].y;
+      if (Math.abs(px - x) <= bagW / 2 + pad && Math.abs(py - y) <= bagH / 2 + pad + bagH * 0.1) {
+        b.x = x; b.y = y; b.anim = 0;
+        if (b.mine) {
+          b.state = 'loaded';
+          loaded++;
+          floats.push({ x, y: y - bagH * 0.5, text: '+' + BAGS_PER_TAP, color: '#4fe08a', life: 0.7 });
+          sfx.load();
+          if (loaded >= GOAL_TAPS) finish();
+        } else {
+          b.state = 'wrong';
+          wrong++; penalty += PENALTY;
+          shake = 0.3; flash = 0.35;
+          floats.push({ x, y: y - bagH * 0.5, text: '+' + PENALTY + 's  ' + b.code + '?!', color: '#ff4d4d', life: 1.1 });
+          clockEl.classList.remove('hit'); void clockEl.offsetWidth; clockEl.classList.add('hit');
+          sfx.wrong();
+          if (navigator.vibrate) { try { navigator.vibrate(80); } catch (e) {} }
+        }
+        return;
+      }
+    }
+  }
+  canvas.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    initAudio();
+    const r = canvas.getBoundingClientRect();
+    tap(e.clientX - r.left, e.clientY - r.top);
+  });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  $('startBtn').addEventListener('click', start);
+  $('restartBtn').addEventListener('click', start);
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+
+  // ---------- update ----------
+  function update(dt) {
+    if (mode === 'title' || mode === 'end') { beltPhase += dt * 40; return; }
+
+    const T = crossTime();
+    beltPhase += dt * (W + bagW) / T;
+    if (mode === 'play') { elapsed += dt; spawn(dt); }
+    if (mode === 'departing') { departT += dt; if (departT > 2.1) showEnd(); }
+
+    for (const b of bags) {
+      if (b.state === 'belt') {
+        b.t += dt / T;
+        if (b.t >= 1) {
+          b.state = 'gone';
+          if (b.mine && mode === 'play') {
+            requeue.push({ at: elapsed + 0.8, body: b.body });
+            const l = lanes[b.lane];
+            floats.push({ x: l.dir > 0 ? W - 60 : 60, y: l.y - bagH * 0.6, text: 'missed, coming back', color: '#ffc928', life: 1.0, size: 0.6 });
+            sfx.miss();
+          }
+        }
+      } else {
+        b.anim += dt;
+        if (b.anim > (b.state === 'loaded' ? 0.32 : 0.55)) b.state = 'gone';
+      }
+    }
+    bags = bags.filter(b => b.state !== 'gone');
+    for (const f of floats) { f.life -= dt; f.y -= dt * 46; }
+    floats = floats.filter(f => f.life > 0);
+    shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
+
+    if (loaded !== lastCount) {
+      lastCount = loaded;
+      countEl.textContent = loaded * BAGS_PER_TAP;
+      barFill.style.width = (progress() * 100) + '%';
+    }
+    const c = fmt(elapsed + penalty);
+    if (c !== lastClock) { lastClock = c; clockEl.textContent = c; }
+  }
+
+  // ---------- drawing ----------
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBelts() {
+    for (const l of lanes) {
+      const y0 = l.y - l.h / 2;
+      ctx.fillStyle = '#0a1016'; ctx.fillRect(0, y0 - 5, W, l.h + 10);
+      ctx.fillStyle = '#27323d'; ctx.fillRect(0, y0, W, l.h);
+      // moving slats
+      const step = 46, off = ((beltPhase * l.dir) % step + step) % step;
+      ctx.fillStyle = '#1e2831';
+      for (let x = off - step; x < W; x += step) ctx.fillRect(x, y0, 4, l.h);
+      // hazard edges
+      ctx.fillStyle = '#ffc928';
+      ctx.fillRect(0, y0 - 5, W, 2); ctx.fillRect(0, y0 + l.h + 3, W, 2);
+      // direction chevrons
+      ctx.strokeStyle = '#3a4957'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      const cs = 184, coff = ((beltPhase * l.dir) % cs + cs) % cs, ch = Math.min(12, l.h * 0.14);
+      for (let x = coff - cs; x < W + cs; x += cs) {
+        ctx.beginPath();
+        ctx.moveTo(x - ch * l.dir, l.y - ch); ctx.lineTo(x, l.y); ctx.lineTo(x - ch * l.dir, l.y + ch);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawBag(b) {
+    let x = bagX(b), y = lanes[b.lane].y, scale = 1, rot = b.tilt, alpha = 1;
+    if (b.state === 'loaded') {
+      const k = b.anim / 0.32, e = k * k;
+      x = lerp(b.x, 70, e); y = lerp(b.y, 40, e); scale = 1 - 0.75 * k; alpha = 1 - 0.4 * k;
+    } else if (b.state === 'wrong') {
+      const k = b.anim / 0.55;
+      x = b.x; y = b.y + k * k * bagH * 1.6; rot = b.tilt + k * 1.4; alpha = 1 - k;
+    }
+    const w = bagW, h = bagH;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(rot); ctx.scale(scale, scale); ctx.globalAlpha = alpha;
+    // shadow
+    ctx.fillStyle = '#0006'; rr(-w / 2 + 3, -h / 2 + 6, w, h, h * 0.16); ctx.fill();
+    // handle
+    ctx.strokeStyle = '#11161b'; ctx.lineWidth = Math.max(4, h * 0.08);
+    ctx.beginPath(); ctx.moveTo(-w * 0.16, -h / 2 + 2); ctx.lineTo(-w * 0.16, -h * 0.64); ctx.lineTo(w * 0.16, -h * 0.64); ctx.lineTo(w * 0.16, -h / 2 + 2); ctx.stroke();
+    // body
+    ctx.fillStyle = b.body; rr(-w / 2, -h / 2, w, h, h * 0.16); ctx.fill();
+    ctx.fillStyle = '#ffffff14'; rr(-w / 2, -h / 2, w, h * 0.3, h * 0.16); ctx.fill();
+    ctx.strokeStyle = '#0005'; ctx.lineWidth = 2; rr(-w / 2, -h / 2, w, h, h * 0.16); ctx.stroke();
+    // tag
+    const tw = w * 0.74, th = h * 0.6, band = th * 0.24;
+    ctx.fillStyle = '#fbf7ec'; rr(-tw / 2, -th / 2, tw, th, 5); ctx.fill();
+    ctx.save(); rr(-tw / 2, -th / 2, tw, th, 5); ctx.clip();
+    ctx.fillStyle = b.color; ctx.fillRect(-tw / 2, -th / 2, tw, band);
+    ctx.restore();
+    ctx.fillStyle = '#16181b';
+    ctx.font = '800 ' + Math.round(th * 0.6) + 'px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(b.code, 0, band / 2 + th * 0.04);
+    ctx.restore();
+  }
+
+  function drawPlane(k) {
+    // simple side-on jet taking off left to right
+    const s = Math.min(W, H) / 420;
+    const x = lerp(-160 * s, W + 160 * s, k * k), y = H * 0.5 - k * k * H * 0.3;
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(-0.12 - k * 0.2); ctx.scale(s, s);
+    ctx.fillStyle = '#eef3f7';
+    ctx.beginPath(); ctx.ellipse(0, 0, 120, 17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-112, -4); ctx.lineTo(-140, -52); ctx.lineTo(-112, -52); ctx.lineTo(-78, -8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#b9c6d1';
+    ctx.beginPath(); ctx.moveTo(-10, 4); ctx.lineTo(-62, 54); ctx.lineTo(-34, 54); ctx.lineTo(36, 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ff8a1f'; ctx.fillRect(-100, -3, 190, 4);
+    ctx.fillStyle = '#27323d';
+    for (let i = 0; i < 9; i++) ctx.fillRect(-70 + i * 17, -10, 8, 5);
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#111a23'; ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    if (shake > 0) ctx.translate(rand(-1, 1) * shake * 26, rand(-1, 1) * shake * 26);
+    drawBelts();
+    for (const b of bags) if (b.state === 'belt') drawBag(b);
+    for (const b of bags) if (b.state !== 'belt') drawBag(b);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const f of floats) {
+      ctx.globalAlpha = Math.min(1, f.life * 2.5);
+      ctx.font = '800 ' + Math.round(Math.max(18, bagH * 0.34) * (f.size || 1)) + 'px system-ui, sans-serif';
+      const half = ctx.measureText(f.text).width / 2 + 8;
+      const fx = Math.max(half, Math.min(W - half, f.x));
+      ctx.lineWidth = 5; ctx.strokeStyle = '#0b1218'; ctx.lineJoin = 'round';
+      ctx.strokeText(f.text, fx, f.y);
+      ctx.fillStyle = f.color; ctx.fillText(f.text, fx, f.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    if (flash > 0) { ctx.fillStyle = 'rgba(255,60,60,' + (flash * 0.7) + ')'; ctx.fillRect(0, 0, W, H); }
+    if (mode === 'departing') {
+      const k = Math.min(1, departT / 2.1);
+      ctx.fillStyle = 'rgba(11,18,24,' + Math.min(0.7, k * 2) + ')'; ctx.fillRect(0, 0, W, H);
+      drawPlane(k);
+      ctx.fillStyle = '#ffc928'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = '900 ' + Math.round(Math.min(44, W / 11)) + 'px system-ui, sans-serif';
+      ctx.fillText('ALL 160 LOADED', W / 2, H * 0.78);
+    }
+  }
+
+  // ---------- loop ----------
+  let last = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000 || 0);
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // Read-only peek at game state, handy for debugging and automated checks.
+  window.bags160 = {
+    get mode() { return mode; },
+    get loaded() { return loaded; },
+    get delay() { return elapsed + penalty; },
+    get bags() { return bags.filter(b => b.state === 'belt').map(b => ({ code: b.code, mine: b.mine, x: bagX(b), y: lanes[b.lane].y })); },
+  };
+
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
